@@ -15,13 +15,13 @@ This repository contains code for interacting with the Bing AI API using Python.
 To use this code, first install the required libraries by running:
 
 ```python
-pip install -r requirements.txt
+pip3 install -r requirements.txt
 ```
 
 Then, run the Flask app by executing:
 
 ```python
-python ask-bing-ai-api.py
+python3 ask-bing-ai-api.py
 ```
 
 The Flask app listens on http://127.0.0.1:5000/ and expects HTTP POST requests in JSON format with a prompt key that contains the user's input and a filtered key set to 1 or 0. The filtered key controls whether or not the response should be filtered to remove metadata.
