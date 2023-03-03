@@ -7,7 +7,6 @@ This repository contains code for interacting with the Bing AI API using Python.
 - Python 3.7 or higher
 - `Flask` library
 - `websockets` library
-- `tls-client` library
 - `requests` library
 
 ## Usage
@@ -24,7 +23,22 @@ Then, run the Flask app by executing:
 python3 ask-bing-ai-api.py
 ```
 
-The Flask app listens on http://127.0.0.1:5000/ and expects HTTP POST requests in JSON format with a prompt key that contains the user's input and a filtered key set to 1 or 0. The filtered key controls whether or not the response should be filtered to remove metadata.
+The Flask app listens on http://127.0.0.1:5000/.
+
+Once the script is running, users can send POST requests to http://127.0.0.1:5000/ with the following JSON data:
+
+    "prompt": The prompt/question to send to the Bing AI API. This is required.
+    "filtered": A boolean flag indicating whether or not to filter the response. This is optional and defaults to 1.
+    "conversation_id": A string that identifies a particular conversation. If not provided, a new conversation ID will be generated. This is optional.
+
+Example request:
+
+```json
+{
+    "prompt": "What is the capital of France?",
+    "filtered": 1,
+}
+```
 
 The Flask app also includes a /cmd/ endpoint that allows you to execute certain commands on the chatbot. The available commands are reset, close, and start. The reset command resets the chatbot's conversation, the close command closes the chatbot's connection, and the start command starts a new chatbot instance. To execute a command, send an HTTP POST request to the /cmd/ endpoint with a command key and a psk key set to the pre-shared key defined in the ask-bing-ai-api.py file.
 
