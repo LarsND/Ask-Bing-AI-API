@@ -27,3 +27,7 @@ python3 ask-bing-ai-api.py
 The Flask app listens on http://127.0.0.1:5000/ and expects HTTP POST requests in JSON format with a prompt key that contains the user's input and a filtered key set to 1 or 0. The filtered key controls whether or not the response should be filtered to remove metadata.
 
 The Flask app also includes a /cmd/ endpoint that allows you to execute certain commands on the chatbot. The available commands are reset, close, and start. The reset command resets the chatbot's conversation, the close command closes the chatbot's connection, and the start command starts a new chatbot instance. To execute a command, send an HTTP POST request to the /cmd/ endpoint with a command key and a psk key set to the pre-shared key defined in the ask-bing-ai-api.py file.
+
+# Credits
+
+Large portion of code stems from [acheong08/EdgeGPT](https://github.com/acheong08/EdgeGPT).
