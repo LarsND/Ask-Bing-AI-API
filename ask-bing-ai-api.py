@@ -4,6 +4,7 @@ import random
 import string
 import uuid
 import time
+import re
 from typing import List, Generator, Optional
 import requests
 import websockets.client as websockets
@@ -55,10 +56,16 @@ class ChatHubRequest:
     def update(self, prompt: str, options: list = None) -> None:
         if options is None:
             options = [
-                "deepleo",
-                "enable_debug_commands",
-                "disable_emoji_spoken_text",
-                "enablemm",
+                    'nlu_direct_response_filter',
+                    'deepleo',
+                    'disable_emoji_spoken_text',
+                    'responsible_ai_policy_235',
+                    'enablemm',
+                    'harmonyv3',
+                    'dtappid',
+                    'cricinfo',
+                    'cricinfov2',
+                    'dv3sugg'
             ]
         self.struct = {
             "arguments": [
@@ -193,7 +200,8 @@ class Chatbot:
         if debug_app:
             print(f"response: {response}")
         if filtered:
-            return response["item"]["messages"][1]["adaptiveCards"][0]["body"][0]["text"]
+            filtered_response = response["item"]["messages"][1]["adaptiveCards"][0]["body"][0]["text"]
+            return filtered_response
         else:
             return response
 
@@ -223,6 +231,7 @@ def handle_post():
         if chatbot is None:
             print(f"ID: {conversation_id} does not exist (anymore). Creating new bot with same ID...")
             create_chatbot(conversation_id=conversation_id)
+            chatbot = chatbots.get(conversation_id)
         print(f"Using chatbot with ID: {conversation_id}")
     filtered = bool(int(request.json.get("filtered")))
     response = asyncio.run(chatbot.handle_request(prompt, filtered=filtered))
