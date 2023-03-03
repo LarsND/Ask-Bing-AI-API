@@ -40,7 +40,7 @@ Example request:
 }
 ```
 
-The Flask app also includes a /cmd/ endpoint that allows you to execute certain commands on the chatbot. The available commands are reset, close, and start. The reset command resets the chatbot's conversation, the close command closes the chatbot's connection, and the start command starts a new chatbot instance. To execute a command, send an HTTP POST request to the /cmd/ endpoint with a command key and a psk key set to the pre-shared key defined in the ask-bing-ai-api.py file.
+The Flask app also includes a /cmd/ endpoint that allows you to execute certain commands on the chatbot. The available commands are reset, close. The reset command resets the chatbot's conversation, the close command closes the chatbot's connection. To execute a command, send an HTTP POST request to the /cmd/ endpoint with a command key and a psk key set to the pre-shared key defined in the ask-bing-ai-api.py file.
 
 # Credits
 
