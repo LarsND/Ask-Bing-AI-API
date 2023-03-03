@@ -28,7 +28,7 @@ The Flask app listens on http://127.0.0.1:5000/.
 Once the script is running, users can send POST requests to http://127.0.0.1:5000/ with the following JSON data:
 
     "prompt": The prompt/question to send to the Bing AI API. This is required.
-    "filtered": A boolean flag indicating whether or not to filter the response. This is optional and defaults to 1.
+    "filtered": A boolean flag indicating whether or not to filter the response.
     "conversation_id": A string that identifies a particular conversation. If not provided, a new conversation ID will be generated. This is optional.
 
 Example request:
