@@ -1,9 +1,11 @@
 import asyncio
 import json
 import random
+import string
 import uuid
+import time
 from typing import List, Generator, Optional
-import tls_client
+import requests
 import websockets.client as websockets
 from flask import Flask, request
 
@@ -91,14 +93,15 @@ class Conversation:
             "conversationSignature": None,
             "result": {"value": "Success", "message": None},
         }
-        self.session = tls_client.Session(client_identifier="chrome_108")
+        self.session = requests.Session()
+        self.session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"})
         with open('cookie.txt', 'r') as f:
             cookie = f.read()
         self.session.cookies.set("_U", cookie)
 
         url = "https://edgeservices.bing.com/edgesvc/turing/conversation/create"
         # Send GET request
-        response = self.session.get(url, timeout_seconds=30, headers=headers, allow_redirects=True)
+        response = self.session.get(url, timeout=30, headers=headers, allow_redirects=True)
         if response.status_code != 200:
             print(f"Status code: {response.status_code}")
             print(response.text)
@@ -161,6 +164,7 @@ class Chatbot:
     def __init__(self) -> None:
         try:
             self.chat_hub: ChatHub = ChatHub()
+            self.creation_time = time.time()
         except Exception as e:
             print(f"Initialization of chatbot failed! \nThe error is: {e}")
 
@@ -177,21 +181,15 @@ class Chatbot:
     async def close(self):
         await self.chat_hub.close()
 
-    async def start(self):
-        if not self.chat_hub.is_alive():
-            self.chat_hub = ChatHub()
-
     async def reset(self):
         await self.close()
         self.chat_hub = ChatHub()
 
     async def handle_request(self, prompt: str, filtered: bool = False):
-        print("Received request.")
         if debug_app:
             print(f"request: {prompt}")
-        bot = Chatbot()
-        response = await bot.ask(prompt=prompt)
-        print("Sending response.")
+        response = await self.ask(prompt=prompt)
+        print("Generated the response.")
         if debug_app:
             print(f"response: {response}")
         if filtered:
@@ -200,29 +198,54 @@ class Chatbot:
             return response
 
 app = Flask(__name__)
-bot = Chatbot()
 
+chatbots = {}
+max_chatbots = 3
+
+def create_chatbot(conversation_id):
+    print(f"Generated new ID: {conversation_id}")
+    chatbots[conversation_id] = Chatbot()
+    if len(chatbots) > max_chatbots:
+        oldest_chatbot = sorted(chatbots.items(), key=lambda x: x[1].creation_time)[0][0]
+        del chatbots[oldest_chatbot]
+    
 @app.route("/", methods=["POST"])
-def handle_post_raw():
+def handle_post():
+    print("Received request.")
     prompt = request.json.get("prompt")
+    conversation_id = request.json.get("conversation_id")
+    if conversation_id is None:
+        conversation_id = ''.join(random.choices(string.ascii_uppercase + string.ascii_lowercase + string.digits, k=12))
+        create_chatbot(conversation_id=conversation_id)
+        chatbot = chatbots.get(conversation_id)
+    else:
+        chatbot = chatbots.get(conversation_id)
+        if chatbot is None:
+            print(f"ID: {conversation_id} does not exist (anymore). Creating new bot with same ID...")
+            create_chatbot(conversation_id=conversation_id)
+        print(f"Using chatbot with ID: {conversation_id}")
     filtered = bool(int(request.json.get("filtered")))
-    response = asyncio.run(bot.handle_request(prompt, filtered=filtered))
-    return {"response": response}
+    response = asyncio.run(chatbot.handle_request(prompt, filtered=filtered))
+    print("Sending response.")
+    return {"response": response, "conversation_id": conversation_id}
 
 @app.route("/cmd/", methods=["POST"])
 def cmd():
     command = str(request.json.get("command"))
     psk = str(request.json.get("psk"))
+    conversation_id = request.json.get("conversation_id")
+    chatbot = chatbots.get(conversation_id)
+    if chatbot is None:
+        return {"cmd": f"chatbot with ID {conversation_id} does not exist. Create a new chatbot."}
+
     if psk == command_psk:
         if command == "reset":
-            asyncio.run(bot.reset())
+            asyncio.run(chatbot.reset())
         elif command == "close":
-            asyncio.run(bot.close())
-        elif command == "start":
-            asyncio.run(bot.start())
+            asyncio.run(chatbot.close())
         else:
-            return {"cmd": "command not found. Make sure the command is sent via {`command`: `<your command>`}. Available commands: reset, close, start"}
-        return {"cmd": f"executed command {command}"}
+            return {"cmd": "command not found. Make sure the command is sent via {`command`: `<your command>`}. Available commands: reset, close", "conversation_id": conversation_id}
+        return {"cmd": f"executed command {command}", "conversation_id": conversation_id}
     else:
         return {"response": "unauthorized"}
 
