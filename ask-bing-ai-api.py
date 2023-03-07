@@ -9,15 +9,12 @@ from typing import List, Generator, Optional
 import requests
 import websockets.client as websockets
 from flask import Flask, request
+import traceback
 
 debug_app = False
-
 command_psk = "notthebestwaytodothis"
-
 delimiter = "\x1e"
-
 forwarded_ip = (f"13.{random.randint(104, 107)}.{random.randint(0, 255)}.{random.randint(0, 255)}") # Generate random IP between range 13.104.0.0/14
-
 headers = {
     "accept": "application/json",
     "accept-language": "nl-NL,nl;q=0.9",
@@ -146,9 +143,7 @@ class ChatHub:
                     continue
                 response = json.loads(obj)
                 if response.get("type") == 1:
-                    yield False, response["arguments"][0]["messages"][0][
-                        "adaptiveCards"
-                    ][0]["body"][0]["text"]
+                    yield False, response
                 elif response.get("type") == 2:
                     final = True
                     yield True, response
@@ -192,61 +187,108 @@ class Chatbot:
         await self.close()
         self.chat_hub = ChatHub()
 
-    async def handle_request(self, prompt: str, filtered: bool = False):
-        if debug_app:
-            print(f"request: {prompt}")
+    async def ask_something(self, prompt: str, filtered: bool):
         response = await self.ask(prompt=prompt)
-        print("Generated the response.")
         if debug_app:
             print(f"response: {response}")
+        success = 1
         if filtered:
-            filtered_response = response["item"]["messages"][1]["adaptiveCards"][0]["body"][0]["text"]
-            return filtered_response
-        else:
-            return response
-
-app = Flask(__name__)
+            try:
+                response = response["item"]["messages"][1]["adaptiveCards"][0]["body"][0]["text"]
+                response = re.sub(r'\[\d+\]:.*?(\n|$)', '', response)
+                response = re.sub(r'\*\*', '', response)
+                response = re.sub(r'\[.*?\]', '', response)
+                response = response.strip()
+            except:
+                print(f"Failed to filter the response! Make sure the filters applied are valid. Full response: \n{response}")
+                response = "Failed to filter the response! Make sure the filters applied are valid."
+                success = 0
+            print("Generated the response.")
+        return response, success
 
 chatbots = {}
 max_chatbots = 3
+app = Flask(__name__)
 
-def create_chatbot(conversation_id):
-    print(f"Generated new ID: {conversation_id}")
-    chatbots[conversation_id] = Chatbot()
-    if len(chatbots) > max_chatbots:
-        oldest_chatbot = sorted(chatbots.items(), key=lambda x: x[1].creation_time)[0][0]
-        del chatbots[oldest_chatbot]
-    
-@app.route("/", methods=["POST"])
-def handle_post():
-    print("Received request.")
-    prompt = request.json.get("prompt")
-    conversation_id = request.json.get("conversation_id")
+def create_chatbot(conversation_id: str):
+    if len(chatbots) != 0:
+        oldest_chatbot = sorted(chatbots.items(), key=lambda x: x[1]["bot"].creation_time)[0][0]
+        while len(chatbots) > max_chatbots:
+            if not chatbots[oldest_chatbot]["chatbot_answer"] == "working":
+                del chatbots[oldest_chatbot]
+        print(f"Generated new ID: {conversation_id}")
+    else:
+        print("No chatbots initialized, skipping amount-check.")
+    chatbots[conversation_id] = {"bot": Chatbot(), "chatbot_answer": None, "chatbot_success": None}
+
+def get_chatbot(conversation_id: str):
     if conversation_id is None:
         conversation_id = ''.join(random.choices(string.ascii_uppercase + string.ascii_lowercase + string.digits, k=12))
         create_chatbot(conversation_id=conversation_id)
-        chatbot = chatbots.get(conversation_id)
+        chatbot = chatbots.get(conversation_id)["bot"]
     else:
-        chatbot = chatbots.get(conversation_id)
-        if chatbot is None:
+        if chatbots.get(conversation_id) is None:
             print(f"ID: {conversation_id} does not exist (anymore). Creating new bot with same ID...")
             create_chatbot(conversation_id=conversation_id)
-            chatbot = chatbots.get(conversation_id)
-        print(f"Using chatbot with ID: {conversation_id}")
-    filtered = bool(int(request.json.get("filtered")))
-    response = asyncio.run(chatbot.handle_request(prompt, filtered=filtered))
-    print("Sending response.")
-    return {"response": response, "conversation_id": conversation_id}
+        chatbot = chatbots.get(conversation_id)["bot"]
+    print(f"Using chatbot with ID: {conversation_id}")
+    return conversation_id, chatbot
 
-@app.route("/cmd/", methods=["POST"])
+def handle_request(prompt: str, chatbot: Chatbot, conversation_id: str, filtered: bool = False, return_enable: bool = False):
+    if not chatbots[conversation_id]["chatbot_answer"] == "working":
+        chatbots[conversation_id]["chatbot_answer"] = "working"
+        chatbots[conversation_id]["chatbot_success"] = None
+        if debug_app:
+            print(f"request: {prompt}")
+        response, success = asyncio.run(chatbot.ask_something(prompt, filtered))
+        if debug_app:
+            print(f"response: {response}")
+        print("Generated the response.")
+        chatbots[conversation_id]["chatbot_answer"] = response
+        chatbots[conversation_id]["chatbot_success"] = success
+    else:
+        success = 0
+        response = chatbots[conversation_id]["chatbot_answer"]
+    if return_enable:
+        return response, success
+    
+@app.route("/ask", methods=["POST"])
+def ask():
+    print("Received ask-wait request.")
+
+    prompt = request.json.get("prompt")
+    filtered = bool(int(request.json.get("filtered")))
+    conversation_id = request.json.get("conversation_id")
+
+    conversation_id, chatbot = get_chatbot(conversation_id=conversation_id)
+    response, success = handle_request(prompt, chatbot=chatbot, filtered=filtered, conversation_id=conversation_id, return_enable=True)
+        
+    print("Sending response.")
+    return {"response": response, "conversation_id": conversation_id, "success": success}
+
+@app.route("/answers/latest/<conversation_id>")
+def get_answer(conversation_id):
+    chatbot = chatbots.get(conversation_id)
+    if chatbot is None:
+        return {"answer": "chatbot does not exist"}
+    chatbot_answer = chatbot.get("chatbot_answer")
+    chatbot_success = chatbot.get("chatbot_success")
+    if chatbot_answer is None:
+        return {"answer": "no answer yet"}
+    else:
+        return {"answer": chatbot_answer, "chatbot_success": chatbot_success}
+
+@app.route("/cmd", methods=["POST"])
 def cmd():
+    print("Received cmd request.")
+
     command = str(request.json.get("command"))
     psk = str(request.json.get("psk"))
     conversation_id = request.json.get("conversation_id")
-    chatbot = chatbots.get(conversation_id)
-    if chatbot is None:
-        return {"cmd": f"chatbot with ID {conversation_id} does not exist. Create a new chatbot."}
 
+    chatbot = chatbots.get(conversation_id)["bot"]
+    if chatbot is None:
+        return {"cmd": f"chatbot with ID {conversation_id} does not exist."}
     if psk == command_psk:
         if command == "reset":
             asyncio.run(chatbot.reset())
@@ -260,7 +302,7 @@ def cmd():
 
 @app.errorhandler(Exception)
 def handle_error(error):
-    print(f"Error: {error}")
+    traceback.print_exc()
     return {"response": f"An error occurred. Error: {str(error)}"}, 500
 
 if __name__ == "__main__":
